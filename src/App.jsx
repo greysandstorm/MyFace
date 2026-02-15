@@ -1,17 +1,19 @@
 import React from 'react';
-import { HashRouter as Router, Routes, Route } from 'react-router-dom';
+import { HashRouter, Routes, Route } from 'react-router-dom';
 import Home from './pages/Home';
 import HistoryPage from './pages/History';
-import './App.css';
+
+// Global styles are loaded in main.jsx via index.css
+// App.css is removed to prevent conflicts
 
 function App() {
   return (
-    <Router>
+    <HashRouter>
       <Routes>
         <Route path="/" element={<Home />} />
         <Route path="/history" element={<HistoryPage />} />
       </Routes>
-    </Router>
+    </HashRouter>
   );
 }
 
