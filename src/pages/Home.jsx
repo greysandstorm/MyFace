@@ -20,7 +20,6 @@ export default function Home() {
             try {
                 await loadModels();
                 setModelsLoaded(true);
-                console.log("FaceAPI Models Loaded");
             } catch (e) {
                 console.error("Failed to load models", e);
             }
@@ -34,22 +33,17 @@ export default function Home() {
         setIsProcessing(true);
         setAnalysis(null);
 
-        // Create an image element for FaceAPI
         const imgEntry = new Image();
         imgEntry.src = imgData;
 
-        // Process everything
         setTimeout(async () => {
             try {
-                // 1. Red Channel Filter
                 const filteredUrl = await applyBlemishFilter(imgData);
                 setProcessedImage(filteredUrl);
 
-                // 2. Face Detection & Zone Analysis
                 if (modelsLoaded) {
                     const detection = await detectFace(imgEntry);
                     if (detection) {
-                        // We need the processed canvas to analyze pixels
                         const tempCanvas = document.createElement('canvas');
                         const ctx = tempCanvas.getContext('2d');
                         const pImg = new Image();
@@ -61,8 +55,6 @@ export default function Home() {
 
                         const scores = analyzeZones(detection, tempCanvas);
 
-                        // Determine top concern
-                        // Simply finding zone with highest "blemish count"
                         let maxScore = 0;
                         let topZone = null;
                         Object.entries(scores).forEach(([zone, score]) => {
@@ -76,7 +68,7 @@ export default function Home() {
                             setAnalysis({
                                 zone: topZone,
                                 details: RECOMMENDATIONS[topZone],
-                                scores: scores // Save full scores
+                                scores: scores
                             });
                         }
                     } else {
@@ -119,7 +111,7 @@ export default function Home() {
         return (
             <div className="container">
                 <CameraCapture onCapture={handleCapture} />
-                <button onClick={() => setIsCameraOpen(false)} className="btn-text">
+                <button onClick={() => setIsCameraOpen(false)} className="btn-text" style={{ marginTop: '1rem', color: '#888' }}>
                     Cancel
                 </button>
             </div>
@@ -128,151 +120,79 @@ export default function Home() {
 
     if (image) {
         return (
-            <div className="container results-view">
-                <div className="image-comparison">
-                    <div className="img-card">
-                        <h3>Original</h3>
+            <div className="container animate-in" style={{ maxWidth: '800px', width: '100%' }}>
+                <div className="grid-2">
+                    <div className="img-wrapper">
+                        <span className="label">Original</span>
                         <img src={image} alt="Original" />
                     </div>
-                    <div className="img-card">
-                        <h3>Red Channel Scan</h3>
+                    <div className="img-wrapper">
+                        <span className="label">Texture Scan</span>
                         {isProcessing ? (
-                            <div className="loading"><Loader className="spin" /> Scanning...</div>
+                            <div className="loading-state"><Loader className="spin" /> Converting...</div>
                         ) : (
-                            <img src={processedImage} alt="Analysis" className="img-filter" />
+                            <img src={processedImage} alt="Analysis" style={{ filter: 'contrast(1.1)' }} />
                         )}
                     </div>
                 </div>
 
                 {analysis && (
-                    <div className="analysis-card">
-                        <h2>🔎 Detected Focus Area: <span className="highlight">{analysis.zone.toUpperCase()}</span></h2>
-                        <p><strong>Possible Cause:</strong> {analysis.details.cause}</p>
-                        <div className="advice-box">
-                            <strong>Recommendation:</strong>
-                            <p>{analysis.details.advice}</p>
+                    <div className="card" style={{ marginTop: '2rem', borderLeft: '4px solid var(--accent)' }}>
+                        <h2 style={{ fontSize: '1.2rem', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
+                            <span style={{ color: 'var(--accent)' }}>●</span>
+                            Primary Focus: {analysis.zone.toUpperCase()}
+                        </h2>
+                        <p style={{ marginBottom: '0.5rem', color: 'var(--text-muted)' }}>
+                            Potentially linked to: <strong style={{ color: 'var(--text-main)' }}>{analysis.details.cause}</strong>
+                        </p>
+                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', marginTop: '1rem' }}>
+                            <p style={{ margin: 0, fontSize: '0.95rem' }}>{analysis.details.advice}</p>
                         </div>
                     </div>
                 )}
 
-                <div className="controls">
+                <div className="controls" style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
                     <button onClick={reset} className="btn-secondary">Retake</button>
-                    <button onClick={handleSave} className="btn-primary">Save to History <ArrowRight /></button>
+                    <button onClick={handleSave} className="btn-primary">Save to History <ArrowRight size={18} /></button>
                 </div>
 
                 <style>{`
-            .results-view { max-width: 800px; width: 100%; }
-            .image-comparison {
-                display: flex;
-                gap: 20px;
-                flex-wrap: wrap;
-                justify-content: center;
-                margin-bottom: 2rem;
-            }
-            .img-card {
-                flex: 1;
-                min-width: 300px;
-                background: #1a1a1a;
-                padding: 10px;
-                border-radius: 12px;
-                box-shadow: 0 4px 6px rgba(0,0,0,0.3);
-            }
-            .img-card h3 { margin-top: 0; font-size: 0.9rem; opacity: 0.8; }
-            .img-card img {
-                width: 100%;
-                border-radius: 8px;
-                display: block;
-            }
-            .img-filter {
-                filter: contrast(1.2) grayscale(1);
-            }
-            .analysis-card {
-                background: linear-gradient(135deg, #2a2a2a 0%, #333 100%);
-                padding: 2rem;
-                border-radius: 16px;
-                text-align: left;
-                margin-bottom: 2rem;
-                border: 1px solid #444;
-            }
-            .highlight { color: #ff6b6b; }
-            .advice-box {
-                background: rgba(255, 255, 255, 0.05);
-                padding: 1rem;
-                border-radius: 8px;
-                margin-top: 1rem;
-                border-left: 4px solid #ff6b6b;
-            }
-            .controls { display: flex; gap: 1rem; justify-content: center; }
-            .spin { animation: spin 1s linear infinite; }
-            @keyframes spin { 100% { transform: rotate(360deg); } }
-        `}</style>
+                    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
+                    .img-wrapper { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
+                    .img-wrapper img { width: 100%; display: block; }
+                    .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; }
+                    .loading-state { height: 300px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #666; }
+                    .spin { animation: spin 1s linear infinite; }
+                    @keyframes spin { 100% { transform: rotate(360deg); } }
+                `}</style>
             </div>
         );
     }
 
     return (
-        <div className="container home-container">
-            <div className="hero">
-                <h1>MyFace</h1>
-                <p className="subtitle">Daily skin analysis powered by AI & TCM.</p>
+        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+            <div style={{ marginBottom: '3rem', textAlign: 'center' }}>
+                <h1 style={{ letterSpacing: '-2px' }}>MyFace</h1>
+                <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Advanced Skin Health Intelligence</p>
             </div>
 
             {!modelsLoaded ? (
-                <div className="loading-models"><Loader className="spin" /> Loading AI Models...</div>
+                <div style={{ display: 'flex', gap: '10px', alignItems: 'center', color: '#666' }}>
+                    <Loader className="spin" size={16} /> Initializing AI...
+                </div>
             ) : (
-                <div className="action-buttons">
+                <div style={{ display: 'flex', gap: '15px', flexDirection: 'column', width: '100%', maxWidth: '300px' }}>
                     <button className="btn-primary" onClick={() => setIsCameraOpen(true)}>
-                        <Camera size={24} />
-                        Check My Skin
+                        <Camera size={20} />
+                        Start Analysis
                     </button>
 
                     <Link to="/history" className="btn-secondary">
-                        <History size={24} />
-                        History
+                        <History size={20} />
+                        View History
                     </Link>
                 </div>
             )}
-
-            <style>{`
-        .home-container { min-height: 80vh; }
-        .hero h1 {
-            font-size: 3.5rem;
-            line-height: 1.1;
-            background: linear-gradient(to right, #fff, #aaa);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 0.5rem;
-        }
-        .subtitle { font-size: 1.2rem; opacity: 0.7; max-width: 400px; margin: 0 auto 3rem auto; }
-        .btn-primary {
-            background: #ff6b6b;
-            color: white;
-            border: none;
-            padding: 1rem 2rem;
-            border-radius: 50px;
-            font-size: 1.1rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            transition: transform 0.2s;
-        }
-        .btn-primary:hover { transform: scale(1.05); background: #ff5252; }
-        .btn-secondary {
-            background: transparent;
-            color: white;
-            border: 2px solid #555;
-            padding: 0.9rem 1.8rem;
-            border-radius: 50px;
-            font-size: 1rem;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            text-decoration: none;
-        }
-        .loading-models { opacity: 0.5; display: flex; gap: 10px; align-items: center; }
-      `}</style>
         </div>
     );
 }

@@ -32,135 +32,57 @@ export default function HistoryPage() {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
         a.href = url;
-        a.download = `face-health-export-${new Date().toISOString().split('T')[0]}.json`;
+        a.download = `myface-export-${new Date().toISOString().split('T')[0]}.json`;
         a.click();
     };
 
     return (
-        <div className="container">
-            <header className="history-header">
+        <div className="container" style={{ maxWidth: '800px', margin: '0 auto' }}>
+            <header style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '2rem' }}>
                 <Link to="/" className="btn-icon-text">
-                    <ArrowLeft /> Back
+                    <ArrowLeft size={18} /> Back
                 </Link>
-                <h1>MyFace Journey</h1>
+                <h1 style={{ fontSize: '1.5rem', margin: 0 }}>Journey</h1>
             </header>
 
-            <div className="toolbar">
-                <button onClick={handleExport} className="btn-small" disabled={logs.length === 0}>
-                    <Download size={16} /> Export Data
+            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: '10px', marginBottom: '20px' }}>
+                <button onClick={handleExport} className="btn-icon-text" disabled={logs.length === 0}>
+                    <Download size={16} /> Export
                 </button>
-                <button onClick={handleClear} className="btn-small danger" disabled={logs.length === 0}>
-                    <Trash2 size={16} /> Clear History
+                <button onClick={handleClear} className="btn-icon-text" style={{ color: '#ff4757' }} disabled={logs.length === 0}>
+                    <Trash2 size={16} /> Clear
                 </button>
             </div>
 
             {logs.length === 0 ? (
-                <div className="empty-state">
-                    <p>No logs yet. Take your first selfie!</p>
+                <div style={{ textAlign: 'center', padding: '4rem', color: '#666', border: '1px dashed #333', borderRadius: '16px' }}>
+                    <p>No records found. Start your first scan.</p>
                 </div>
             ) : (
-                <div className="grid">
+                <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '20px' }}>
                     {logs.map((log) => (
-                        <div key={log.id} className="log-card">
-                            <div className="card-header">
-                                <span className="date">
-                                    {new Date(log.timestamp).toLocaleDateString()}
-                                </span>
+                        <div key={log.id} className="card" style={{ padding: 0, overflow: 'hidden' }}>
+                            <div style={{ padding: '1rem', borderBottom: '1px solid #222', display: 'flex', justifyContent: 'space-between' }}>
+                                <span style={{ color: '#888', fontSize: '0.9rem' }}>{new Date(log.timestamp).toLocaleDateString()}</span>
                                 {log.analysis && (
-                                    <span className="badge">{log.analysis.zone}</span>
+                                    <span style={{ color: 'var(--accent)', fontWeight: 600, fontSize: '0.8rem', textTransform: 'uppercase' }}>
+                                        {log.analysis.zone}
+                                    </span>
                                 )}
                             </div>
-                            <div className="card-images">
-                                <img src={log.originalImage} alt="Original" />
-                                <img src={log.processedImage} alt="Analysis" className="img-filter" />
+                            <div style={{ display: 'flex', height: '180px' }}>
+                                <img src={log.originalImage} style={{ width: '50%', objectFit: 'cover' }} alt="Original" />
+                                <img src={log.processedImage} style={{ width: '50%', objectFit: 'cover', filter: 'contrast(1.1)' }} alt="Analysis" />
                             </div>
                             {log.analysis && (
-                                <div className="card-footer">
-                                    <p>{log.analysis.details.cause}</p>
+                                <div style={{ padding: '1rem', fontSize: '0.9rem', color: '#ccc' }}>
+                                    {log.analysis.details.cause}
                                 </div>
                             )}
                         </div>
                     ))}
                 </div>
             )}
-
-            <style>{`
-                .history-header {
-                    width: 100%;
-                    display: flex;
-                    align-items: center;
-                    justify-content: space-between;
-                    margin-bottom: 2rem;
-                }
-                .btn-icon-text {
-                    display: flex;
-                    align-items: center;
-                    gap: 8px;
-                    color: white;
-                    text-decoration: none;
-                }
-                .toolbar {
-                    display: flex;
-                    justify-content: flex-end;
-                    gap: 10px;
-                    width: 100%;
-                    margin-bottom: 20px;
-                }
-                .grid {
-                    display: grid;
-                    grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
-                    gap: 20px;
-                    width: 100%;
-                }
-                .log-card {
-                    background: #1a1a1a;
-                    border-radius: 12px;
-                    overflow: hidden;
-                    border: 1px solid #333;
-                }
-                .card-header {
-                    padding: 10px 15px;
-                    display: flex;
-                    justify-content: space-between;
-                    background: #252525;
-                }
-                .date { opacity: 0.7; font-size: 0.9rem; }
-                .badge {
-                    background: #ff6b6b;
-                    color: white;
-                    padding: 2px 8px;
-                    border-radius: 10px;
-                    font-size: 0.8rem;
-                    text-transform: uppercase;
-                }
-                .card-images {
-                    display: flex;
-                    height: 150px;
-                }
-                .card-images img {
-                    width: 50%;
-                    height: 100%;
-                    object-fit: cover;
-                }
-                .img-filter { filter: contrast(1.2) grayscale(1); }
-                .card-footer {
-                    padding: 10px 15px;
-                    font-size: 0.9rem;
-                    opacity: 0.8;
-                }
-                .btn-small {
-                    background: transparent;
-                    border: 1px solid #555;
-                    color: #aaa;
-                    padding: 5px 10px;
-                    border-radius: 4px;
-                    cursor: pointer;
-                    display: flex;
-                    gap: 5px;
-                    align-items: center;
-                }
-                .btn-small.danger:hover { border-color: red; color: red; }
-            `}</style>
         </div>
     );
 }
