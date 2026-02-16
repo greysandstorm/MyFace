@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { Camera, History, ArrowRight, Loader } from 'lucide-react';
+import { Camera, History, ArrowRight, Loader, RotateCcw } from 'lucide-react';
 import CameraCapture from '../components/CameraCapture';
 import { applyBlemishFilter } from '../utils/imageProcessing';
 import { loadModels, detectFace, analyzeZones, RECOMMENDATIONS } from '../utils/faceMapping';
@@ -28,61 +28,67 @@ export default function Home() {
     }, []);
 
     const handleCapture = async (imgData) => {
+        // Clear ALL previous state first (fixes ghosting)
+        setProcessedImage(null);
+        setAnalysis(null);
+
         setImage(imgData);
         setIsCameraOpen(false);
         setIsProcessing(true);
-        setAnalysis(null);
 
         const imgEntry = new Image();
         imgEntry.src = imgData;
 
-        setTimeout(async () => {
-            try {
-                const filteredUrl = await applyBlemishFilter(imgData);
-                setProcessedImage(filteredUrl);
+        // Wait for image to actually load before processing
+        await new Promise(r => { imgEntry.onload = r; });
 
-                if (modelsLoaded) {
-                    const detection = await detectFace(imgEntry);
-                    if (detection) {
-                        const tempCanvas = document.createElement('canvas');
-                        const ctx = tempCanvas.getContext('2d');
-                        const pImg = new Image();
-                        pImg.src = filteredUrl;
-                        await new Promise(r => pImg.onload = r);
-                        tempCanvas.width = pImg.width;
-                        tempCanvas.height = pImg.height;
-                        ctx.drawImage(pImg, 0, 0);
+        try {
+            // 1. Apply red inflammation overlay
+            const filteredUrl = await applyBlemishFilter(imgData);
+            setProcessedImage(filteredUrl);
 
-                        const scores = analyzeZones(detection, tempCanvas);
+            // 2. Face Detection & Zone Analysis
+            if (modelsLoaded) {
+                const detection = await detectFace(imgEntry);
+                if (detection) {
+                    // Use the processed image for zone scoring
+                    const tempCanvas = document.createElement('canvas');
+                    const ctx = tempCanvas.getContext('2d');
+                    const pImg = new Image();
+                    pImg.src = filteredUrl;
+                    await new Promise(r => pImg.onload = r);
+                    tempCanvas.width = pImg.width;
+                    tempCanvas.height = pImg.height;
+                    ctx.drawImage(pImg, 0, 0);
 
-                        let maxScore = 0;
-                        let topZone = null;
-                        Object.entries(scores).forEach(([zone, score]) => {
-                            if (score > maxScore) {
-                                maxScore = score;
-                                topZone = zone;
-                            }
-                        });
+                    const scores = analyzeZones(detection, tempCanvas);
 
-                        if (topZone) {
-                            setAnalysis({
-                                zone: topZone,
-                                details: RECOMMENDATIONS[topZone],
-                                scores: scores
-                            });
+                    let maxScore = 0;
+                    let topZone = null;
+                    Object.entries(scores).forEach(([zone, score]) => {
+                        if (score > maxScore) {
+                            maxScore = score;
+                            topZone = zone;
                         }
-                    } else {
-                        console.warn("No face detected.");
-                    }
-                }
+                    });
 
-            } catch (err) {
-                console.error(err);
-                alert("Failed to process image");
-            } finally {
-                setIsProcessing(false);
+                    if (topZone) {
+                        setAnalysis({
+                            zone: topZone,
+                            details: RECOMMENDATIONS[topZone],
+                            scores: scores
+                        });
+                    }
+                } else {
+                    console.warn("No face detected.");
+                }
             }
-        }, 500);
+        } catch (err) {
+            console.error(err);
+            alert("Failed to process image");
+        } finally {
+            setIsProcessing(false);
+        }
     };
 
     const handleSave = async () => {
@@ -93,6 +99,8 @@ export default function Home() {
                 processedImage: processedImage,
                 analysis: analysis
             });
+            // Reset state after saving
+            reset();
             navigate('/history');
         } catch (e) {
             console.error(e);
@@ -105,63 +113,93 @@ export default function Home() {
         setProcessedImage(null);
         setAnalysis(null);
         setIsCameraOpen(false);
+        setIsProcessing(false);
     };
 
+    // ---------- CAMERA VIEW ----------
     if (isCameraOpen) {
         return (
-            <div className="container">
+            <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '1rem' }}>
                 <CameraCapture onCapture={handleCapture} />
-                <button onClick={() => setIsCameraOpen(false)} className="btn-text" style={{ marginTop: '1rem', color: '#888' }}>
-                    Cancel
-                </button>
+                <button onClick={() => setIsCameraOpen(false)} style={{
+                    background: 'transparent', border: 'none', color: '#888',
+                    cursor: 'pointer', fontSize: '0.95rem', padding: '0.5rem'
+                }}>Cancel</button>
             </div>
         );
     }
 
+    // ---------- RESULTS VIEW ----------
     if (image) {
         return (
-            <div className="container animate-in" style={{ maxWidth: '800px', width: '100%' }}>
-                <div className="grid-2">
-                    <div className="img-wrapper">
-                        <span className="label">Original</span>
-                        <img src={image} alt="Original" />
-                    </div>
-                    <div className="img-wrapper">
-                        <span className="label">Texture Scan</span>
-                        {isProcessing ? (
-                            <div className="loading-state"><Loader className="spin" /> Converting...</div>
-                        ) : (
-                            <img src={processedImage} alt="Analysis" style={{ filter: 'contrast(1.1)' }} />
-                        )}
-                    </div>
+            <div className="container animate-in" style={{ maxWidth: '600px', width: '100%', margin: '0 auto' }}>
+                {/* Single Image: shows processed (red overlay) or original while loading */}
+                <div style={{ position: 'relative', borderRadius: '16px', overflow: 'hidden', background: '#000' }}>
+                    <img
+                        src={processedImage || image}
+                        alt="Skin Analysis"
+                        style={{ width: '100%', display: 'block' }}
+                    />
+                    {isProcessing && (
+                        <div style={{
+                            position: 'absolute', inset: 0,
+                            background: 'rgba(0,0,0,0.6)',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            flexDirection: 'column', gap: '12px', color: 'white'
+                        }}>
+                            <Loader className="spin" size={28} />
+                            <span style={{ fontSize: '0.9rem', letterSpacing: '0.05em' }}>
+                                Analyzing skin...
+                            </span>
+                        </div>
+                    )}
                 </div>
 
+                {/* Analysis Results */}
                 {analysis && (
-                    <div className="card" style={{ marginTop: '2rem', borderLeft: '4px solid var(--accent)' }}>
-                        <h2 style={{ fontSize: '1.2rem', margin: '0 0 1rem 0', display: 'flex', alignItems: 'center', gap: '10px' }}>
-                            <span style={{ color: 'var(--accent)' }}>●</span>
-                            Primary Focus: {analysis.zone.toUpperCase()}
-                        </h2>
-                        <p style={{ marginBottom: '0.5rem', color: 'var(--text-muted)' }}>
-                            Potentially linked to: <strong style={{ color: 'var(--text-main)' }}>{analysis.details.cause}</strong>
+                    <div className="card" style={{
+                        marginTop: '1.5rem', textAlign: 'left',
+                        borderLeft: '4px solid var(--accent)'
+                    }}>
+                        <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginBottom: '1rem' }}>
+                            <span style={{
+                                background: 'var(--accent)', color: 'white',
+                                padding: '4px 12px', borderRadius: '100px',
+                                fontSize: '0.75rem', fontWeight: '700',
+                                textTransform: 'uppercase', letterSpacing: '0.05em'
+                            }}>
+                                {analysis.zone}
+                            </span>
+                            <span style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
+                                Primary area of concern
+                            </span>
+                        </div>
+
+                        <p style={{ margin: '0 0 0.75rem 0', fontSize: '1rem', lineHeight: '1.6' }}>
+                            <strong>Linked to:</strong>{' '}
+                            <span style={{ color: 'var(--text-muted)' }}>{analysis.details.cause}</span>
                         </p>
-                        <div style={{ background: 'rgba(255,255,255,0.05)', padding: '1rem', borderRadius: '8px', marginTop: '1rem' }}>
-                            <p style={{ margin: 0, fontSize: '0.95rem' }}>{analysis.details.advice}</p>
+
+                        <div style={{
+                            background: 'rgba(255,71,87,0.08)', padding: '1rem',
+                            borderRadius: '10px', fontSize: '0.95rem', lineHeight: '1.6'
+                        }}>
+                            💡 {analysis.details.advice}
                         </div>
                     </div>
                 )}
 
-                <div className="controls" style={{ marginTop: '2rem', display: 'flex', gap: '1rem', justifyContent: 'center' }}>
-                    <button onClick={reset} className="btn-secondary">Retake</button>
-                    <button onClick={handleSave} className="btn-primary">Save to History <ArrowRight size={18} /></button>
+                {/* Actions */}
+                <div style={{ display: 'flex', gap: '12px', justifyContent: 'center', marginTop: '1.5rem' }}>
+                    <button onClick={reset} className="btn-secondary" style={{ flex: 1 }}>
+                        <RotateCcw size={16} /> Retake
+                    </button>
+                    <button onClick={handleSave} className="btn-primary" style={{ flex: 1 }}>
+                        Save <ArrowRight size={16} />
+                    </button>
                 </div>
 
                 <style>{`
-                    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; }
-                    .img-wrapper { position: relative; border-radius: 12px; overflow: hidden; background: #000; }
-                    .img-wrapper img { width: 100%; display: block; }
-                    .label { position: absolute; top: 10px; left: 10px; background: rgba(0,0,0,0.7); padding: 4px 10px; border-radius: 4px; font-size: 0.8rem; font-weight: 500; }
-                    .loading-state { height: 300px; display: flex; align-items: center; justify-content: center; gap: 10px; color: #666; }
                     .spin { animation: spin 1s linear infinite; }
                     @keyframes spin { 100% { transform: rotate(360deg); } }
                 `}</style>
@@ -169,27 +207,34 @@ export default function Home() {
         );
     }
 
+    // ---------- HOME / LANDING VIEW ----------
     return (
-        <div className="container" style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '80vh' }}>
+        <div className="container" style={{
+            display: 'flex', flexDirection: 'column', alignItems: 'center',
+            justifyContent: 'center', minHeight: '80vh'
+        }}>
             <div style={{ marginBottom: '3rem', textAlign: 'center' }}>
                 <h1 style={{ letterSpacing: '-2px' }}>MyFace</h1>
-                <p style={{ color: 'var(--text-muted)', fontSize: '1.1rem' }}>Advanced Skin Health Intelligence</p>
+                <p style={{ color: 'var(--text-muted)', fontSize: '1.05rem', maxWidth: '350px', margin: '0 auto' }}>
+                    Scan your skin. Spot inflammation. Get personalized recommendations.
+                </p>
             </div>
 
             {!modelsLoaded ? (
                 <div style={{ display: 'flex', gap: '10px', alignItems: 'center', color: '#666' }}>
-                    <Loader className="spin" size={16} /> Initializing AI...
+                    <Loader className="spin" size={16} /> Loading AI models...
+                    <style>{`
+                        .spin { animation: spin 1s linear infinite; }
+                        @keyframes spin { 100% { transform: rotate(360deg); } }
+                    `}</style>
                 </div>
             ) : (
-                <div style={{ display: 'flex', gap: '15px', flexDirection: 'column', width: '100%', maxWidth: '300px' }}>
+                <div style={{ display: 'flex', gap: '12px', flexDirection: 'column', width: '100%', maxWidth: '300px' }}>
                     <button className="btn-primary" onClick={() => setIsCameraOpen(true)}>
-                        <Camera size={20} />
-                        Start Analysis
+                        <Camera size={20} /> Start Scan
                     </button>
-
                     <Link to="/history" className="btn-secondary">
-                        <History size={20} />
-                        View History
+                        <History size={20} /> My Journal
                     </Link>
                 </div>
             )}
