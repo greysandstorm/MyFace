@@ -38,50 +38,67 @@ export default function Home() {
 
         const imgEntry = new Image();
         imgEntry.src = imgData;
-
-        // Wait for image to actually load before processing
         await new Promise(r => { imgEntry.onload = r; });
 
         try {
-            // 1. Apply red inflammation overlay
-            const filteredUrl = await applyBlemishFilter(imgData);
+            let facePolygon = null;
+            let detection = null;
+
+            // 1. Detect face FIRST to get the face outline
+            if (modelsLoaded) {
+                detection = await detectFace(imgEntry);
+                if (detection) {
+                    // Build face outline polygon from landmarks:
+                    // Jawline (points 0-16) + forehead estimated from brow points (17-26)
+                    const pts = detection.landmarks.positions;
+                    const jawline = [];
+                    for (let i = 0; i <= 16; i++) {
+                        jawline.push({ x: pts[i].x, y: pts[i].y });
+                    }
+                    // Project forehead above the eyebrows
+                    const browTop = [];
+                    for (let i = 26; i >= 17; i--) {
+                        browTop.push({ x: pts[i].x, y: pts[i].y - 50 });
+                    }
+                    facePolygon = [...jawline, ...browTop];
+                }
+            }
+
+            // 2. Apply red inflammation overlay (only inside face polygon)
+            const filteredUrl = await applyBlemishFilter(imgData, facePolygon);
             setProcessedImage(filteredUrl);
 
-            // 2. Face Detection & Zone Analysis
-            if (modelsLoaded) {
-                const detection = await detectFace(imgEntry);
-                if (detection) {
-                    // Use the processed image for zone scoring
-                    const tempCanvas = document.createElement('canvas');
-                    const ctx = tempCanvas.getContext('2d');
-                    const pImg = new Image();
-                    pImg.src = filteredUrl;
-                    await new Promise(r => pImg.onload = r);
-                    tempCanvas.width = pImg.width;
-                    tempCanvas.height = pImg.height;
-                    ctx.drawImage(pImg, 0, 0);
+            // 3. Zone Analysis
+            if (detection) {
+                const tempCanvas = document.createElement('canvas');
+                const ctx = tempCanvas.getContext('2d');
+                const pImg = new Image();
+                pImg.src = filteredUrl;
+                await new Promise(r => pImg.onload = r);
+                tempCanvas.width = pImg.width;
+                tempCanvas.height = pImg.height;
+                ctx.drawImage(pImg, 0, 0);
 
-                    const scores = analyzeZones(detection, tempCanvas);
+                const scores = analyzeZones(detection, tempCanvas);
 
-                    let maxScore = 0;
-                    let topZone = null;
-                    Object.entries(scores).forEach(([zone, score]) => {
-                        if (score > maxScore) {
-                            maxScore = score;
-                            topZone = zone;
-                        }
-                    });
-
-                    if (topZone) {
-                        setAnalysis({
-                            zone: topZone,
-                            details: RECOMMENDATIONS[topZone],
-                            scores: scores
-                        });
+                let maxScore = 0;
+                let topZone = null;
+                Object.entries(scores).forEach(([zone, score]) => {
+                    if (score > maxScore) {
+                        maxScore = score;
+                        topZone = zone;
                     }
-                } else {
-                    console.warn("No face detected.");
+                });
+
+                if (topZone) {
+                    setAnalysis({
+                        zone: topZone,
+                        details: RECOMMENDATIONS[topZone],
+                        scores: scores
+                    });
                 }
+            } else {
+                console.warn("No face detected — overlay applied to full image as fallback.");
             }
         } catch (err) {
             console.error(err);
