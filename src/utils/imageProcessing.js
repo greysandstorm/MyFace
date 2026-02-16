@@ -1,53 +1,83 @@
 /**
- * Processes an image to highlight blemishes using a "Red Channel Reduction" technique.
- * Theory: Blemishes are red. In a B&W image, if we reduce the contribution of the Red channel, 
- * red things become darker (because their brightness comes from Red).
+ * Advanced Blemish Detection: High-Pass Texture Filter
  * 
- * @param {string} imageDataUrl - The captured selfie.
- * @returns {Promise<string>} - The processed image as a Data URL.
+ * Instead of simply averaging channels, this compares each pixel's
+ * Green channel value to the LOCAL AVERAGE of its neighbors.
+ * 
+ * Blemishes (red spots) absorb green light → appear dark in the Green channel.
+ * By subtracting the local average, we isolate ONLY the local dark spots
+ * (texture/blemishes) and remove the overall skin tone gradient.
+ * 
+ * Result: White background with dark spots where blemishes are.
+ *
+ * @param {string} imageDataUrl - The captured selfie as a data URL.
+ * @returns {Promise<string>} - The processed image as a data URL.
  */
 export const applyBlemishFilter = (imageDataUrl) => {
     return new Promise((resolve, reject) => {
         const img = new Image();
         img.onload = () => {
             const canvas = document.createElement('canvas');
+            const ctx = canvas.getContext('2d');
             canvas.width = img.width;
             canvas.height = img.height;
-            const ctx = canvas.getContext('2d');
-            ctx.drawImage(img, 0, 0);
 
+            ctx.drawImage(img, 0, 0);
             const imageData = ctx.getImageData(0, 0, canvas.width, canvas.height);
             const data = imageData.data;
 
-            for (let i = 0; i < data.length; i += 4) {
-                const r = data[i];
-                const g = data[i + 1];
-                const b = data[i + 2];
+            const width = canvas.width;
+            const height = canvas.height;
+            const radius = 4; // Blur kernel radius
 
-                // Standard B&W uses ~ 0.3R + 0.59G + 0.11B
-                // We want to REDUCE red sensitivity.
-                // Let's rely mostly on Blue and Green.
-                // Blemishes (Red) will lack G/B brightness, so they will appear darker.
+            const getIndex = (x, y) => (y * width + x) * 4;
 
-                // Algorithm: Average of Green and Blue channels.
-                let gray = (g + b) / 2;
+            // Clamp helper
+            const getG = (x, y) => {
+                x = Math.max(0, Math.min(width - 1, x));
+                y = Math.max(0, Math.min(height - 1, y));
+                return data[getIndex(x, y) + 1]; // Green channel
+            };
 
-                // Contrast stretching to make the dark spots darker
-                // (Simple linear contrast)
-                const contrast = 1.2; // Increase contrast by 20%
-                const intercept = 128 * (1 - contrast);
-                gray = gray * contrast + intercept;
+            const outputData = ctx.createImageData(width, height);
+            const out = outputData.data;
 
-                // Clamping
-                gray = Math.max(0, Math.min(255, gray));
+            for (let y = 0; y < height; y++) {
+                for (let x = 0; x < width; x++) {
+                    const i = getIndex(x, y);
+                    const currentG = data[i + 1];
 
-                data[i] = gray;     // R
-                data[i + 1] = gray; // G
-                data[i + 2] = gray; // B
-                // Alpha (data[i+3]) remains unchanged
+                    // Calculate local average (box blur of Green channel)
+                    let sum = 0;
+                    let count = 0;
+                    for (let ky = -radius; ky <= radius; ky++) {
+                        for (let kx = -radius; kx <= radius; kx++) {
+                            sum += getG(x + kx, y + ky);
+                            count++;
+                        }
+                    }
+                    const avgG = sum / count;
+
+                    // High-pass: how much darker is this pixel than surroundings?
+                    let diff = avgG - currentG;
+
+                    // Amplify the difference
+                    diff = diff * 4;
+
+                    // Noise gate: ignore very small differences (normal skin texture)
+                    if (diff < 10) diff = 0;
+
+                    // Output: white background, dark where blemishes are
+                    const val = Math.max(0, Math.min(255, 255 - diff));
+
+                    out[i] = val;       // R
+                    out[i + 1] = val;   // G
+                    out[i + 2] = val;   // B
+                    out[i + 3] = 255;   // Alpha
+                }
             }
 
-            ctx.putImageData(imageData, 0, 0);
+            ctx.putImageData(outputData, 0, 0);
             resolve(canvas.toDataURL());
         };
         img.onerror = reject;
